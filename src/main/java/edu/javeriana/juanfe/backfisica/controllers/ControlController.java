@@ -17,6 +17,7 @@ public class ControlController {
     public String enviarServos(@RequestParam int angulo, @RequestParam double tension){
         String mensaje = String.format("{\"angulo\": %d, \"tension\": %.2f}", angulo, tension);
         mqttService.publishServoData(mensaje);
+        System.out.println("Recibido: " + mensaje);
         return "Comando enviado: " + mensaje;
     }
 }
