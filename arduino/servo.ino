@@ -3,57 +3,36 @@
 #include <Servo.h>
 #include <ArduinoJson.h>
 
-const char* ssid = "juanfe";
-const char* password = "12345678";
+const char* ssid = "Casa_42";
+const char* password = "elgato2024";
 
-
-const char* mqtt_server = "172.30.48.1";
+const char* mqtt_server = "192.168.1.11";
 const int mqtt_port = 1883;
-const char* topic_sub = "esp/servos";      // Tema que escucha el ESP
+const char* topic_sub = "esp/servos";
+
+#define PIN_SERVO1 D5
+#define PIN_SERVO2 D6
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-Servo servoTension; // Servo que tensa el resorte (MG995)
-Servo servoInclinacion; // Servo que inclina el cañón (CS60)
+Servo servo1;
+Servo servo2;
 
-// Variables de control
-int angulo = 90;
-int tension = 0;
-
-// --- Función para conectar al WiFi ---
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Conectando a WiFi: ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(")");
-  }
-
-  Serial.println("");
-  Serial.println("Conectado a WiFi");
-  Serial.print("IP asignada: ");
-  Serial.println(WiFi.localIP());
-}
-
-// --- Callback cuando llega un mensaje MQTT ---
 void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Mensaje recibido en [");
-  Serial.print(topic);
-  Serial.print("]: ");
+  Serial.println("\n-----------------------------------");
+  Serial.print("MQTT mensaje recibido en tópico: ");
+  Serial.println(topic);
+
+  Serial.print("Longitud: ");
+  Serial.println(length);
 
   String mensaje;
-  for (unsigned int i = 0; i < length; i++) {
-    mensaje += (char)payload[i];
-  }
+  for (unsigned int i = 0; i < length; i++) mensaje += (char)payload[i];
+
+  Serial.print("Mensaje crudo: ");
   Serial.println(mensaje);
 
-  // Parsear JSON del mensaje
   StaticJsonDocument<200> doc;
   DeserializationError error = deserializeJson(doc, mensaje);
 
@@ -63,46 +42,49 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // Leer los valores del JSON
-  angulo = doc["angulo"];
-  tension = doc["tension"];
-
-  Serial.print("Ángulo: ");
-  Serial.println(angulo);
-  Serial.print("Tensión: ");
-  Serial.println(tension);
-
-  // Mover los servos
-  moverServos();
-}
-
-// --- Función para mover los servos ---
-void moverServos() {
-  // Limitar los valores a un rango válido
+  int angulo = doc["angulo"].as<int>();
   angulo = constrain(angulo, 0, 180);
-  tension = constrain(tension * 10, 0, 180); // Escalamos la tensión (segundos -> posición aprox.)
 
-  servoInclinacion.write(angulo);
-  servoTension.write(tension);
+  Serial.print("Ángulo recibido: ");
+  Serial.println(angulo);
 
-  Serial.print("↩Servos movidos -> Inclinación: ");
-  Serial.print(angulo);
-  Serial.print("°, Tensión: ");
-  Serial.print(tension);
-  Serial.println("°");
+  // Mover servos
+  servo1.write(angulo);
+  servo2.write(angulo);
+
+  Serial.print("Servos movidos a: ");
+  Serial.println(angulo);
+  Serial.println("-----------------------------------\n");
 }
 
-// --- Reconexión a MQTT si se pierde conexión ---
+void setup_wifi() {
+  Serial.println();
+  Serial.print("Conectando a WiFi: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConectado a WiFi");
+  Serial.print("IP asignada: ");
+  Serial.println(WiFi.localIP());
+}
+
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Intentando conexión MQTT...");
     if (client.connect("ESP8266_Servos")) {
-      Serial.println("conectado");
+      Serial.println("Conectado");
       client.subscribe(topic_sub);
+      Serial.print("Suscrito al tópico: ");
+      Serial.println(topic_sub);
     } else {
-      Serial.print("Error (rc=");
+      Serial.print("Error rc=");
       Serial.print(client.state());
-      Serial.println("). Reintentando en 3s...");
+      Serial.println(" - Reintentando en 3s...");
       delay(3000);
     }
   }
@@ -111,20 +93,20 @@ void reconnect() {
 void setup() {
   Serial.begin(115200);
 
-  servoTension.attach(D4);     // Servo de tensión (MG995)
-  servoInclinacion.attach(D5); // Servo de inclinación (CS60)
+  servo1.attach(PIN_SERVO1);
+  servo2.attach(PIN_SERVO2);
+
+  servo1.write(0);
+  servo2.write(0);
 
   setup_wifi();
-
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 
-  Serial.println("Esperando comandos MQTT...");
+  Serial.println("\nEsperando comandos MQTT...");
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
+  if (!client.connected()) reconnect();
   client.loop();
 }
